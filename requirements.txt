@@ -1,0 +1,4 @@
+cherrypy
+alembic
+sqlalchemy
+tenjin

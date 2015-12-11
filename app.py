@@ -1,8 +1,11 @@
 import cherrypy
+from models import *
+from models.customer import Customer
+
 
 def log_it():
    print("Remote IP: {}".format(cherrypy.request.remote.ip))
-cherrypy.tools.logit = cherrypy.Tool('before_finalize', log_it)
+cherrypy.tools.logit = cherrypy.Tool('before_finalize', log_it, priority=60)
 
 def secureheaders():
     headers = cherrypy.response.headers
@@ -13,12 +16,17 @@ cherrypy.tools.secureheaders = cherrypy.Tool('before_finalize', secureheaders, p
 
 class Root(object):
     @cherrypy.expose
+    @cherrypy.tools.logit()
     def index(self):
         # Get the SQLAlchemy session associated
         # with this request.
         # It'll be released once the request
         # processing terminates
         db = cherrypy.request.db
+        c = Customer()
+        c.name = "First Customer"
+        c.order_count = 1
+        db.add(c)
 
         cherrypy.log("bang")
         return "hello world"
@@ -31,6 +39,16 @@ class Root(object):
             yield "world"
         return content()
     thing._cp_config = {'response.stream': True}
+
+    @cherrypy.expose
+    def tenjin(self):
+        return {
+            'page': 'tenjin.pyhtml',
+            'context': {
+                'msg': 'I did it with Tenjin'
+            },
+            'layout': None
+        }
 
 @cherrypy.popargs('name')
 class Band(object):
@@ -48,6 +66,8 @@ class Album(object):
         return 'About %s by %s...' % (title, name)
 
 if __name__ == '__main__':
+    # ###############################################################
+
     # Register the SQLAlchemy plugin
     from plugins.sqlalchemy.saplugin import SAEnginePlugin
     SAEnginePlugin(cherrypy.engine, 'sqlite:///my.db').subscribe()
@@ -55,6 +75,18 @@ if __name__ == '__main__':
     # Register the SQLAlchemy tool
     from plugins.sqlalchemy.satool import SATool
     cherrypy.tools.db = SATool()
+
+    # ###############################################################
+
+    # Register the Tenjin plugin
+    from plugins.tenjin.tenjinplugin import TenjinTemplatePlugin
+    TenjinTemplatePlugin(cherrypy.engine, path=["views"]).subscribe()
+
+    # Register the Tenjin tool
+    from plugins.tenjin.tenjintool import TenjinTool
+    cherrypy.tools.template = TenjinTool()
+
+    # ###############################################################
 
     cherrypy.config.update("configs/development.conf")
 
@@ -65,12 +97,14 @@ if __name__ == '__main__':
             'tools.secureheaders.on': True,
             'tools.sessions.on': True,
             'tools.sessions.secure': True,
-            'tools.sessions.httponly': True
+            'tools.sessions.httponly': True,
+            'tools.template.on': True,
+            'tools.encode.on': False
         }
     })
 
     cherrypy.tree.mount(Band(), '/band', {
-        '/band': {
+        '/': {
             'tools.gzip.on': True,
             'tools.db.on': True,
             'tools.secureheaders.on': True,
